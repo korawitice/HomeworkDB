@@ -1,54 +1,82 @@
 'use strict'
 
-const Database= use('Database')
+const Database = use('Database')
+const Validator = use('Validator')
+const Group = use("App/Models/Group")
 
 function numberTypeParamValidator(number) {
-    if(Number.isNaN(parseInt(number))) 
-    throw new Error(`param: ${number} is not supported, please use number typr param instead.`)
+    if (Number.isNaN(parseInt(number)))
+        return { error: `param: ${number} is not supported, Please use number type param.` }
+    return {}
 }
 
 class GroupController {
+    async index({ request }) {
+        const { references } = request.qs;
+        const groups = Group.query();
 
-    async index(){
-        const groups = await Database.table('groups')
+        if (references) {
+            const extractedReferences = references.split(",");
+            groups.with(extractedReferences);
+        }
 
-        return { status: 200, error: undefined, data: groups }
+        return { status: 200, error: undefined, data: await groups.fetch() }
     }
 
-    async show( { request } ){
+    async show({ request }) {
         const { id } = request.params
 
-        const validatedValue = numberTypeParamValidator(id)
+        const ValidateValue = numberTypeParamValidator(id)
 
-        if(validatedValue.error)
-            return{ status: 500,error: validatedValue.error, data: undefined}
+        if (ValidateValue.error)
+            return { status: 500, error: validateValue.error, data: undefined }
 
-        const group = await Database
-            .select('*')
-            .from('groups')
-            .where("group_id", id)
-            .first()
+        const group = await Group.find(id)
 
-        return  { status: 200, error: undefined, data:group  || {} }
+        return { status: 200, error: undefined, data: group || {} }
     }
 
-    async store ({ request }){
+    async store({ request }) {
         const { name } = request.body
 
-        const missingKey = []
+        const rules = {
+            name: "required|unique:groups,name",
+        }
 
-        if(!name) missingKey.push('name')
+        const Validation = await Validator.validateAll(request.body, rules)
 
+        if (Validation.fails())
+            return { status: 422, error: Validation.message(), data: undefined }
 
-        if(missingKey.legth)
-        return  { status: 422, error: `${missingKey} is missing.`, data:undefined }
-
-        const group = await Database
-            .table('groups')
-            .insert({ name })
+            const group = new Group();
+            group.name = name;
         
-        return  { status: 200, error: undefined, data: { name } }
+            await group.save();
+
+        return { status: 200, error: undefined, data: { name } }
     }
+
+    async update({ request }) {
+        
+        const { body, params } = request
+        const { id } = params
+        const { name } = body
+        const group = await Group.find(id)
+    
+        group.merge({ name })
+    
+        await group.save()
+    
+        return { status: 200, error: undefined, data: group }
+      }
+    
+      async destroy({ request }) {
+        const { id } = request.params
+    
+        await Database.table("groups").where({ group_id: id }).delete()
+    
+        return { status: 200, error: undefined, data: { message: "success" } }
+      }
 }
 
 module.exports = GroupController

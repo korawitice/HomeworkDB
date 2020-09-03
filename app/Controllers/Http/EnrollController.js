@@ -1,57 +1,89 @@
 'use strict'
 
-const Database= use('Database')
+const Database = use('Database')
+const Validator = use('Validator')
+const Enrollment = use("App/Models/Enrollment")
 
 function numberTypeParamValidator(number) {
-    if(Number.isNaN(parseInt(number))) 
-    throw new Error(`param: ${number} is not supported, please use number typr param instead.`)
+    if (Number.isNaN(parseInt(number)))
+        return { error: `param: ${number} is not supported, Please use number type param.` }
+    return {}
 }
 
 class EnrollmentController {
+    async index({ request }) {
+        const { references } = request.qs
 
-    async index(){
-        const enrollments = await Database.table('enrollments')
+        const enrollments = Enrollment.query()
 
-        return { status: 200, error: undefined, data: enrollments }
+        if (references) {
+            const extractedReferences = references.split(",");
+            extractedReferences.forEach((value) => {
+                enrollments.with(value)
+            })
+        }
+
+        return { status: 200, error: undefined, data: enrollments.fetch() }
     }
 
-    async show( { request } ){
+    async show({ request }) {
         const { id } = request.params
 
-        const validatedValue = numberTypeParamValidator(id)
+        const ValidateValue = numberTypeParamValidator(id)
 
-        if(validatedValue.error)
-            return{ status: 500,error: validatedValue.error, data: undefined}
+        if (ValidateValue.error)
+            return { status: 500, error: validateValue.error, data: undefined }
 
-        const enrollment = await Database
-            .select('*')
-            .from('enrollments')
-            .where("enrollment_id", id)
-            .first()
+        const enrollment = await Enrollment.find(id)
 
-        return  { status: 200, error: undefined, data: enrollment  || {} }
+        return { status: 200, error: undefined, data: group || {} }
     }
 
-    async store ({ request }){
-        const { mark, mark_date, student_id, subject_id  } = request.body
+    async store({ request }) {
+        const { mark, mark_id, student_id, subject_id } = request.body
 
-        const missingKey = []
+        const rules = {
+            mark: "required",
+            student_id: "required",
+            subject_id: "required",
+        }
 
-        if(!mark) missingKey.push('mark')
-        // if(!mark_date) missingKey.push('mark_date')
-        if(!student_id) missingKey.push('student_id')
-        if(!subject_id) missingKey.push('subject_id')
+        const Validation = await Validator.validateAll(request.body, rules)
 
+        if (Validation.fails())
+            return { status: 422, error: Validation.message(), data: undefined }
 
-        if(missingKey.legth)
-        return  { status: 422, error: `${missingKey} is missing.`, data:undefined }
-
-        const enrollment = await Database
-            .table('enrollments')
-            .insert({ mark, mark_date, student_id, subject_id })
+            const enrollment = new Enrollment();
+            enrollment.mark = mark;
+            enrollment.student_id = student_id;
+            enrollment.subject_id = subject_id;
         
-        return  { status: 200, error: undefined, data: { mark, mark_date, student_id, subject_id } }
+            await enrollment.save();
+
+        return { status: 200, error: undefined, data: enrollment }
     }
+
+    async update({ request }) {
+        
+        const { body, params } = request
+        const { id } = params
+        const { mark } = body
+        const enrollment = await Enrollment.find(id)
+    
+        enrollment.merge({ mark })
+    
+        await enrollment.save()
+    
+        return { status: 200, error: undefined, data: enrollment, }
+      }
+    
+      async destroy({ request }) {
+        const { id } = request.params
+    
+        await Database.table("enrollments").where({ enrollment_id: id }).delete()
+    
+        return { status: 200, error: undefined, data: { message: "success" } }
+      }
 }
 
 module.exports = EnrollmentController

@@ -1,59 +1,93 @@
 'use strict'
 
-const Database= use('Database')
+const Database = use('Database')
 const Hash = use('Hash')
+const Validator = use('Validator')
+const Teacher = use("App/Models/Teacher")
 
 function numberTypeParamValidator(number) {
-    if(Number.isNaN(parseInt(number))) 
-    throw new Error(`param: ${number} is not supported, please use number typr param instead.`)
+    if (Number.isNaN(parseInt(number)))
+        return { error: `param: '${number}' is not supported, please use param as a number.`, }
+    return {}
 }
 
 class TeacherController {
+    async index({ request }) {
+        const { references } = request.qs
+        const teachers = Teacher.query()
 
-    async index(){
-        const teachers = await Database.table('teachers')
+        if (references) {
+            const extractedReferences = references.split(",")
+            teachers.with(extractedReferences)
+        }
 
-        return { status: 200, error: undefined, data: teachers }
+        return { status: 200, error: undefined, data: await teachers.fetch() }
     }
 
-    async show( { request } ){
+    async show({ request }) {
         const { id } = request.params
 
-        const validatedValue = numberTypeParamValidator(id)
+        const ValidateValue = numberTypeParamValidator(id)
 
-        if(validatedValue.error)
-            return{ status: 500,error: validatedValue.error, data: undefined}
+        if (ValidateValue.error)
+            return { status: 500, error: validateValue.error, data: undefined }
 
-        const teacher = await Database
-            .select('*')
-            .from('teachers')
-            .where("teacher_id", id)
-            .first()
+        const teacher = await Teacher.find(id);
 
-        return  { status: 200, error: undefined, data: teacher  || {} }
+        return { status: 200, error: undefined, data: teacher || {} }
     }
 
-    async store ({ request }){
-        const { firstname, lastname, email, password } = request.body
+    async store({ request }) {
+        const { first_name, last_name, email, password } = request.body
 
-        const missingKey = []
+        const rules = {
+            first_name: 'required',
+            last_name: 'required',
+            password: 'required|email|unique:teachers,email',
+            email: 'required|min:8'
+        }
 
-        if(!firstname) missingKey.push('firstname')
-        if(!lastname) missingKey.push('lastname')
-        if(!email) missingKey.push('email')
-        if(!password) missingKey.push('password')
+        const Validation = await Validator.validateAll(request.body, rules)
 
-        if(missingKey.legth)
-        return  { status: 422, error: `${missingKey} is missing.`, data:undefined }
+        if (Validation.fails())
+            return { status: 422, error: Validation.message(), data: undefined }
 
         const hashedPassword = await Hash.make(password)
 
-        const teacher = await Database
-            .table('teachers')
-            .insert({ firstname, lastname, email, password: hashedPassword })
+        const teacher = new Teacher()
+        teacher.first_name = first_name
+        teacher.last_name = last_name
+        teacher.email = email
+        teacher.password = hashedPassword
+    
+        await teacher.save()
+
+        return { status: 200, error: undefined, data: teacher }
+    }
+
+    async update({ request }) {
         
-        return  { status: 200, error: undefined, data: { firstname, lastname, email } }
+        const { body, params } = request
+        const { id } = params
+        const { first_name, last_name, email } = body
+        const teacher = await Teacher.find(id)
+
+        teacher.merge({ first_name, last_name, email })
+        await teacher.save()
+
+        return { status: 200, error: undefined, data: teacher }
+
+    }
+
+    async destroy({ request }) {
+        const { id } = request.params
+
+        await Database
+            .table('teachers')
+            .where({ teacher_id: id })
+            .delete()
+
+        return { status: 200, error: undefined, data: { message: 'success' } }
     }
 }
-
 module.exports = TeacherController
